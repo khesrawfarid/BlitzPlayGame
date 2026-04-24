@@ -25,6 +25,8 @@ import {
 import { translations, Language } from './translations';
 import PartyGame from './components/PartyGame';
 import TowerDefenseGame from './components/TowerDefense';
+import neonMemoryThumb from './neon-memory.svg';
+import towerDefenseThumb from './tower-defense.svg';
 
 // --- Types ---
 interface Game {
@@ -75,10 +77,10 @@ const ALL_IQ_QUESTIONS = [
 const INITIAL_GAMES: Game[] = [
   { id: 'party', title: 'Party Quiz (Online)', thumbnail: 'https://images.unsplash.com/photo-1511512578047-dfb367046420?auto=format&fit=crop&q=80&w=400&h=250', genre: 'party', difficulty: 'easy', isAI: false, isMultiplayer: true },
   { id: '1', title: 'Blitz Clicker', thumbnail: 'https://images.unsplash.com/photo-1550745165-9bc0b252726f?auto=format&fit=crop&q=80&w=400&h=250', genre: 'speed', difficulty: 'easy', isAI: false, isMultiplayer: false },
-  { id: '2', title: 'Neon Memory', thumbnail: '/neon-memory.svg', genre: 'puzzle', difficulty: 'medium', isAI: true, isMultiplayer: false },
+  { id: '2', title: 'Neon Memory', thumbnail: neonMemoryThumb, genre: 'puzzle', difficulty: 'medium', isAI: true, isMultiplayer: false },
   { id: '7', title: 'Math Blitz', thumbnail: 'https://images.unsplash.com/photo-1635070041078-e363dbe005cb?auto=format&fit=crop&q=80&w=400&h=250', genre: 'puzzle', difficulty: 'medium', isAI: false, isMultiplayer: false },
   { id: '8', title: 'Reaction Master', thumbnail: 'https://images.unsplash.com/photo-1552820728-8b83bb6b773f?auto=format&fit=crop&q=80&w=400&h=250', genre: 'speed', difficulty: 'hard', isAI: false, isMultiplayer: true },
-  { id: '9', title: 'Tower Defense', thumbnail: '/tower-defense.svg', genre: 'battle', difficulty: 'medium', isAI: false, isMultiplayer: false },
+  { id: '9', title: 'Tower Defense', thumbnail: towerDefenseThumb, genre: 'battle', difficulty: 'medium', isAI: false, isMultiplayer: false },
   { id: 'iq', title: 'IQ Test', thumbnail: 'https://images.unsplash.com/photo-1620712943543-bcc4688e7485?auto=format&fit=crop&q=80&w=400&h=250', genre: 'puzzle', difficulty: 'hard', isAI: true, isMultiplayer: false },
   { id: 'worldfront', title: 'WorldFront', thumbnail: 'https://images.unsplash.com/photo-1524661135-423995f22d0b?auto=format&fit=crop&q=80&w=400&h=250', genre: 'battle', difficulty: 'hard', isAI: false, isMultiplayer: false },
 ];
