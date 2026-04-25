@@ -31,16 +31,21 @@ export default function PartyGame({ onExit, t }: { onExit: () => void, t: any })
   const [selectedAnswer, setSelectedAnswer] = useState<string | null>(null);
 
   useEffect(() => {
-    // Determine the socket URL. Since we are in the same environment (port 3000 serves both), we can connect relatively.
-    const url = window.location.origin.includes('localhost') ? window.location.origin : window.location.origin;
+    // Connect to the Render backend provided by the user, fallback to origin for local dev
+    const url = window.location.hostname === 'localhost' 
+      ? window.location.origin 
+      : 'https://blitzplaygame.onrender.com';
+      
     socket = io(url, {
       path: '/socket.io',
-      transports: ['websocket', 'polling']
+      transports: ['websocket', 'polling'],
+      reconnectionAttempts: 10,
+      reconnectionDelay: 1000
     });
 
     socket.on('connect_error', (err) => {
       console.error('Socket connect error:', err);
-      setError('Verbindung zum Server fehlgeschlagen: ' + err.message);
+      setError('Verbindung zum Server fehlgeschlagen: ' + err.message + ' (' + err.type + ')');
     });
 
     socket.on('room-update', (r: Room) => {
