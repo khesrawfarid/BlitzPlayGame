@@ -3,9 +3,8 @@ import { Chess } from 'chess.js';
 import { Chessboard } from 'react-chessboard';
 import { ArrowLeft, RotateCcw, Clock, Zap, User, Users, Cpu } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { io, Socket } from 'socket.io-client';
-
-let socket: Socket;
+import { doc, getDoc, onSnapshot, setDoc, updateDoc } from 'firebase/firestore';
+import { db } from '../firebase';
 
 interface ChessGameProps {
   onBack: () => void;
@@ -128,70 +127,44 @@ export default function ChessGame({ onBack, t }: ChessGameProps) {
   const [playerColor, setPlayerColor] = useState<'w' | 'b'>('w');
   const [roomId, setRoomId] = useState('');
 
-  // Setup Socket
+  // Setup Socket/Firebase Listener
   useEffect(() => {
-    const url = window.location.hostname === 'localhost' || window.location.hostname.includes('.run.app')
-      ? window.location.origin 
-      : 'https://blitzplaygame.onrender.com';
-      
-    if (!socket) {
-      socket = io(url, {
-        path: '/socket.io',
-        transports: ['websocket', 'polling']
-      });
-    }
-
-    socket.on('chess-room-update', (r) => {
-      setRoom(r);
-      if (r.state === 'playing' && !gameStarted) {
-        setGameStarted(true);
-        setTimerActive(true);
+    if (!roomId) return;
+    
+    const unsub = onSnapshot(doc(db, 'rooms', roomId), (docSnap) => {
+      if (docSnap.exists()) {
+        const r = docSnap.data();
+        setRoom(r);
+        
+        if (r.state === 'playing' && !gameStarted) {
+          const newGame = new Chess(r.chessFen || undefined);
+          setGame(newGame);
+          setWhiteTime(r.whiteTime || initialTime);
+          setBlackTime(r.blackTime || initialTime);
+          if (r.timeLimit) setInitialTime(r.timeLimit);
+          setGameStarted(true);
+          setTimerActive(true);
+          setStatus(newGame.turn() === 'w' ? t.whiteTurn : t.blackTurn);
+          
+          if (r.lastMove) {
+            setLastMove(r.lastMove);
+          }
+        } else if (r.state === 'playing' && r.chessFen && r.chessFen !== game.fen()) {
+          const newGame = new Chess(r.chessFen);
+          setGame(newGame);
+          if (r.lastMove) {
+            setLastMove(r.lastMove);
+          }
+        }
+      } else {
+        setGameEnded(true);
+        setStatus(t.opponentLeft);
+        setTimerActive(false);
       }
     });
 
-    socket.on('chess-start-game', (r) => {
-      setRoom(r);
-      const newGame = new Chess();
-      setGame(newGame);
-      setWhiteTime(r.chessState.timeLimit);
-      setBlackTime(r.chessState.timeLimit);
-      setInitialTime(r.chessState.timeLimit);
-      setGameStarted(true);
-      setTimerActive(true);
-      setStatus(t.whiteTurn);
-    });
-
-    socket.on('chess-moved', ({ fen }) => {
-      const prevFen = game.fen();
-      const newGame = new Chess(fen);
-      setGame(newGame);
-      
-      // Try to find the move by comparing FENs
-      const oldGame = new Chess(prevFen);
-      const moves = oldGame.moves({ verbose: true });
-      const move = moves.find(m => {
-        const copy = new Chess(prevFen);
-        copy.move(m);
-        return copy.fen() === fen;
-      });
-      if (move) {
-        setLastMove({ from: move.from, to: move.to });
-      }
-    });
-
-    socket.on('party-closed', () => {
-      setGameEnded(true);
-      setStatus(t.opponentLeft);
-      setTimerActive(false);
-    });
-
-    return () => {
-      socket.off('chess-room-update');
-      socket.off('chess-start-game');
-      socket.off('chess-moved');
-      socket.off('party-closed');
-    };
-  }, [gameStarted]);
+    return () => unsub();
+  }, [roomId, gameStarted]);
 
   useEffect(() => {
     let interval: any;
@@ -429,7 +402,10 @@ export default function ChessGame({ onBack, t }: ChessGameProps) {
       setGame(gameCopy);
       setLastMove({ from: moveFrom, to: square });
       if (playMode === 'multiplayer' && room) {
-        socket.emit('chess-move', { code: room.code, fen: gameCopy.fen() });
+        updateDoc(doc(db, 'rooms', roomId), {
+          chessFen: gameCopy.fen(),
+          lastMove: { from: moveFrom, to: square }
+        });
       }
       if (!timerActive) setTimerActive(true);
     }
@@ -473,7 +449,10 @@ export default function ChessGame({ onBack, t }: ChessGameProps) {
         setGame(gameCopy);
         setLastMove({ from: sourceSquare, to: targetSquare });
         if (playMode === 'multiplayer' && room) {
-          socket.emit('chess-move', { code: room.code, fen: gameCopy.fen() });
+          updateDoc(doc(db, 'rooms', roomId), {
+            chessFen: gameCopy.fen(),
+            lastMove: { from: sourceSquare, to: targetSquare }
+          });
         }
         setOptionSquares({});
         setMoveFrom('');
@@ -515,7 +494,10 @@ export default function ChessGame({ onBack, t }: ChessGameProps) {
       setGame(gameCopy);
       setLastMove({ from: pendingPromotion.from, to: pendingPromotion.to });
       if (playMode === 'multiplayer' && room) {
-        socket.emit('chess-move', { code: room.code, fen: gameCopy.fen() });
+        updateDoc(doc(db, 'rooms', roomId), {
+          chessFen: gameCopy.fen(),
+          lastMove: { from: pendingPromotion.from, to: pendingPromotion.to }
+        });
       }
       if (!timerActive) setTimerActive(true);
     }
@@ -601,7 +583,11 @@ export default function ChessGame({ onBack, t }: ChessGameProps) {
               <div className={`w-10 h-10 sm:w-12 sm:h-12 rounded-lg sm:rounded-xl flex items-center justify-center text-white border border-white/20 shadow-inner transition-colors duration-300 ${game.turn() === (playerColor === 'w' ? 'b' : 'w') && timerActive ? 'bg-gradient-to-br from-red-900 to-black' : 'bg-gradient-to-br from-gray-800 to-black'}`}>
                  <Zap size={20} className={game.turn() === (playerColor === 'w' ? 'b' : 'w') && timerActive ? 'text-[#ff4b4b] animate-pulse' : 'text-white/50'} />
               </div>
-              <span className={`font-bold uppercase text-sm sm:text-base tracking-wider ${game.turn() === (playerColor === 'w' ? 'b' : 'w') && timerActive ? 'text-white' : 'text-white/50'}`}>{playMode === 'multiplayer' ? 'Gegner' : 'Bot'}</span>
+              <span className={`font-bold uppercase text-sm sm:text-base tracking-wider ${game.turn() === (playerColor === 'w' ? 'b' : 'w') && timerActive ? 'text-white' : 'text-white/50'}`}>
+                {playMode === 'multiplayer' && room 
+                  ? (room.players?.find((p: any) => p.color !== playerColor)?.name || 'Gegner')
+                  : 'Bot'}
+              </span>
             </div>
             <div className="flex items-center gap-2 sm:gap-3">
               <Clock size={16} className={`hidden sm:block transition-colors duration-300 ${game.turn() === (playerColor === 'w' ? 'b' : 'w') && timerActive ? 'text-[#ff4b4b] animate-spin-slow' : 'text-white/30'}`} style={game.turn() === (playerColor === 'w' ? 'b' : 'w') && timerActive ? { animationDuration: '3s' } : {}} />
@@ -647,12 +633,20 @@ export default function ChessGame({ onBack, t }: ChessGameProps) {
                                   className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white text-center focus:outline-none focus:border-play-blue"
                                />
                                <button 
-                                 onClick={() => {
+                                 onClick={async () => {
                                    if (!playerName) return alert('Bitte Namen eingeben!');
-                                   socket.emit('create-chess-room', { name: playerName }, (res: any) => {
-                                     setRoom(res.room);
-                                     setPlayerColor('w');
-                                   });
+                                   const code = Math.random().toString(36).substring(2, 6).toUpperCase();
+                                   const newRoom = {
+                                     type: 'chess',
+                                     code,
+                                     hostId: 'local',
+                                     players: [{ name: playerName, color: 'w', id: Date.now().toString() }],
+                                     state: 'lobby'
+                                   };
+                                   await setDoc(doc(db, 'rooms', code), newRoom);
+                                   setRoom(newRoom);
+                                   setRoomId(code);
+                                   setPlayerColor('w');
                                  }}
                                  className="py-3 w-full bg-play-blue hover:scale-105 rounded-xl font-bold transition-all text-black cursor-pointer"
                                >
@@ -667,15 +661,23 @@ export default function ChessGame({ onBack, t }: ChessGameProps) {
                                     className="w-1/2 bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white text-center uppercase"
                                  />
                                  <button 
-                                   onClick={() => {
+                                   onClick={async () => {
                                       if (!playerName || !joinCode) return alert('Name & Code eingeben!');
-                                      socket.emit('join-chess-room', { code: joinCode, name: playerName }, (res: any) => {
-                                        if (res.error) alert(res.error);
-                                        else {
-                                          setRoom(res.room);
+                                      const roomDoc = await getDoc(doc(db, 'rooms', joinCode));
+                                      if (roomDoc.exists()) {
+                                        const r = roomDoc.data();
+                                        if (r.players.length < 2) {
+                                          const updatedPlayers = [...r.players, { name: playerName, color: 'b', id: Date.now().toString() }];
+                                          await updateDoc(doc(db, 'rooms', joinCode), { players: updatedPlayers });
+                                          setRoom({ ...r, players: updatedPlayers });
+                                          setRoomId(joinCode);
                                           setPlayerColor('b');
+                                        } else {
+                                          alert('Room is full');
                                         }
-                                      });
+                                      } else {
+                                        alert('Room not found');
+                                      }
                                    }}
                                    className="w-1/2 py-3 bg-white/10 hover:bg-white/20 rounded-xl font-bold transition-all text-white cursor-pointer"
                                  >
@@ -722,8 +724,14 @@ export default function ChessGame({ onBack, t }: ChessGameProps) {
                                      ))}
                                    </div>
                                    <button 
-                                     onClick={() => {
-                                       socket.emit('chess-start', { code: room.code, timeLimit: initialTime });
+                                     onClick={async () => {
+                                       await updateDoc(doc(db, 'rooms', room.code), {
+                                         state: 'playing',
+                                         chessFen: new Chess().fen(),
+                                         timeLimit: initialTime,
+                                         whiteTime: initialTime,
+                                         blackTime: initialTime
+                                       });
                                      }}
                                      className="py-4 w-full bg-play-blue hover:scale-105 rounded-xl font-black text-xl transition-all shadow-[0_0_20px_rgba(59,130,246,0.3)] text-black cursor-pointer"
                                    >
@@ -826,7 +834,11 @@ export default function ChessGame({ onBack, t }: ChessGameProps) {
               <div className={`w-10 h-10 sm:w-12 sm:h-12 rounded-lg sm:rounded-xl flex items-center justify-center text-black border border-white/20 shadow-inner transition-colors duration-300 ${game.turn() === playerColor && timerActive ? 'bg-gradient-to-br from-white to-gray-300' : 'bg-gradient-to-br from-gray-400 to-gray-600'}`}>
                  <User size={20} className={game.turn() === playerColor && timerActive ? 'text-black' : 'text-gray-200'} />
               </div>
-              <span className={`font-bold uppercase text-sm sm:text-base tracking-wider ${game.turn() === playerColor && timerActive ? 'text-white' : 'text-white/50'}`}>Spieler</span>
+              <span className={`font-bold uppercase text-sm sm:text-base tracking-wider ${game.turn() === playerColor && timerActive ? 'text-white' : 'text-white/50'}`}>
+                {playMode === 'multiplayer' && room 
+                  ? (room.players?.find((p: any) => p.color === playerColor)?.name || playerName || 'Spieler')
+                  : (playerName || 'Spieler')}
+              </span>
             </div>
             <div className="flex items-center gap-2 sm:gap-3">
               <Clock size={16} className={`hidden sm:block transition-colors duration-300 ${game.turn() === playerColor && timerActive ? 'text-play-blue animate-spin-slow' : 'text-white/30'}`} style={game.turn() === playerColor && timerActive ? { animationDuration: '3s' } : {}} />

@@ -1,11 +1,11 @@
+import { doc, getDoc, onSnapshot, setDoc, updateDoc } from 'firebase/firestore';
+import { db } from '../firebase';
+import { QUESTION_BANK } from '../questions';
 import React, { useState, useEffect } from 'react';
-import { io, Socket } from 'socket.io-client';
 import { Trophy, Users, Play, LogOut, CheckCircle2, Clock } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import historyTopicThumb from '../history-topic.svg';
 import mixedTopicThumb from '../mixed-topic.svg';
-
-let socket: Socket | null = null;
 
 interface Player {
   id: string;
@@ -25,6 +25,8 @@ interface Room {
 
 export default function PartyGame({ onExit, t }: { onExit: () => void, t: any }) {
   const [room, setRoom] = useState<Room | null>(null);
+  const [roomId, setRoomId] = useState('');
+  const [userId, setUserId] = useState(() => Date.now().toString());
   const [name, setName] = useState('');
   const [joinCode, setJoinCode] = useState('');
   const [error, setError] = useState('');
@@ -33,42 +35,44 @@ export default function PartyGame({ onExit, t }: { onExit: () => void, t: any })
   const [selectedAnswer, setSelectedAnswer] = useState<string | null>(null);
 
   useEffect(() => {
-    // Connect to the Render backend provided by the user, fallback to origin for local dev
-    const url = window.location.hostname === 'localhost' || window.location.hostname.includes('.run.app')
-      ? window.location.origin 
-      : 'https://blitzplaygame.onrender.com';
-      
-    socket = io(url, {
-      path: '/socket.io',
-      transports: ['websocket', 'polling'],
-      reconnectionAttempts: 10,
-      reconnectionDelay: 1000
-    });
-
-    socket.on('connect_error', (err) => {
-      console.error('Socket connect error:', err);
-      setError(t.connectionFailed ? t.connectionFailed + ': ' + err.message : 'Connection failed: ' + err.message);
-    });
-
-    socket.on('room-update', (r: Room) => {
-      setRoom(r);
-      if (r.state === 'playing' && !selectedAnswer) {
-        setTimeLeft(15);
-        setSelectedAnswer(null); // Reset for new question
+    if (!roomId) return;
+    
+    const unsub = onSnapshot(doc(db, 'rooms', roomId), (docSnap) => {
+      if (docSnap.exists()) {
+        const r = docSnap.data() as Room;
+        setRoom(r);
+        
+        // When state changes to playing and we haven't answered, reset timer
+        if (r.state === 'playing') {
+          const currentPlayer = r.players.find(p => p.id === userId);
+          if (currentPlayer && !currentPlayer.hasAnswered && selectedAnswer) {
+             // Let it stay if we answered locally already but host updated
+          } else if (currentPlayer && !currentPlayer.hasAnswered && !selectedAnswer) {
+             // Handled by another effect below
+          }
+        }
+      } else {
+        alert(t.partyClosed);
+        onExit();
       }
     });
 
-    socket.on('party-closed', () => {
-      alert(t.partyClosed);
-      onExit();
-    });
+    return () => unsub();
+  }, [roomId, t, onExit, userId, selectedAnswer]);
 
-    return () => {
-      if (socket) {
-        socket.disconnect();
-      }
-    };
-  }, [t]);
+  // Handle question progression syncing properly
+  useEffect(() => {
+    if (room?.state === 'playing') {
+       // Reset selected answer if the question index changed and we are marked as not answered
+       const player = room.players.find(p => p.id === userId);
+       if (player && !player.hasAnswered) {
+          if (selectedAnswer) setSelectedAnswer(null);
+          // Only start timer if question just started. Since host progresses questions, we just follow.
+          // Time left is handled per question. We sync it by starting at 15 when question changes.
+          setTimeLeft(15);
+       }
+    }
+  }, [room?.currentQuestion, room?.state]); 
 
   // Timer logic for questions
   useEffect(() => {
@@ -77,40 +81,57 @@ export default function PartyGame({ onExit, t }: { onExit: () => void, t: any })
       return () => clearTimeout(timer);
     } else if (room?.state === 'playing' && timeLeft === 0 && !selectedAnswer) {
        // time's up, auto-submit empty or wrong
-       if (socket && room) {
-           socket.emit('submit-answer', { code: room.code, answer: '', timeRemaining: 0 });
-           setSelectedAnswer('');
+       if (roomId && room) {
+           submitFirebaseAnswer('');
        }
     }
   }, [room?.state, timeLeft, selectedAnswer, isHost]);
 
-  const handleCreateParty = () => {
+  const handleCreateParty = async () => {
     let playerName = name.trim();
     if (!playerName) {
       playerName = 'Host';
       setName(playerName);
     }
     setIsHost(true);
-    socket?.emit('create-party', (res: any) => {
-      if (res.code) {
-        setJoinCode(res.code);
-        socket?.emit('join-party', { code: res.code, name: playerName }, (joinRes: any) => {
-          if (joinRes.error) setError(joinRes.error);
-        });
-      }
-    });
+    
+    const code = Math.random().toString(36).substring(2, 6).toUpperCase();
+    const newRoom: Room = {
+      code,
+      hostId: userId,
+      state: 'lobby',
+      players: [{ id: userId, name: playerName, score: 0, hasAnswered: false }],
+      currentQuestion: 0,
+      questions: []
+    };
+    
+    await setDoc(doc(db, 'rooms', code), newRoom);
+    setJoinCode(code);
+    setRoomId(code);
   };
 
-  const handleJoinParty = () => {
+  const handleJoinParty = async () => {
     let playerName = name.trim();
     if (!playerName) {
       playerName = 'Player' + Math.floor(Math.random()*1000);
       setName(playerName);
     }
     if (!joinCode) return setError('Error: No Code');
-    socket?.emit('join-party', { code: joinCode.toUpperCase(), name: playerName }, (res: any) => {
-      if (res.error) setError(res.error);
-    });
+    
+    const code = joinCode.toUpperCase();
+    const roomRef = doc(db, 'rooms', code);
+    const roomSnap = await getDoc(roomRef);
+    
+    if (!roomSnap.exists()) {
+      return setError('Code ungültig!');
+    }
+    const r = roomSnap.data() as Room;
+    if (r.state !== 'lobby') return setError('Spiel läuft bereits!');
+    if (r.players.find(p => p.name === playerName)) return setError('Name schon vergeben!');
+    
+    const newPlayers = [...r.players, { id: userId, name: playerName, score: 0, hasAnswered: false }];
+    await updateDoc(roomRef, { players: newPlayers });
+    setRoomId(code);
   };
 
   const [selectedTopic, setSelectedTopic] = useState('mixed');
@@ -129,18 +150,93 @@ export default function PartyGame({ onExit, t }: { onExit: () => void, t: any })
     { id: 'history', name: t.topicHistory, img: historyTopicThumb }
   ];
 
-  const startGame = () => {
-    if (room?.code) {
-      const finalTopic = selectedTopic === 'flags' ? selectedSubTopic : selectedTopic;
-      socket?.emit('start-game', { code: room.code, topic: finalTopic });
+  const startGame = async () => {
+    if (room?.code && isHost) {
+      const topic = selectedTopic === 'flags' ? selectedSubTopic : selectedTopic;
+      
+      let selectedQuestions = [];
+      if (topic === 'flags-all') {
+        selectedQuestions = [
+          ...(QUESTION_BANK['flags-europe'] || []),
+          ...(QUESTION_BANK['flags-asia'] || []),
+          ...(QUESTION_BANK['flags-americas'] || []),
+          ...(QUESTION_BANK['flags-africa'] || [])
+        ];
+      } else if (topic === 'mixed') {
+        selectedQuestions = Object.keys(QUESTION_BANK).flatMap(k => QUESTION_BANK[k]);
+      } else {
+        selectedQuestions = QUESTION_BANK[topic] || QUESTION_BANK['general'];
+      }
+      
+      // Shuffle and pick 5
+      selectedQuestions = [...selectedQuestions].sort(() => 0.5 - Math.random()).slice(0, 5);
+
+      await updateDoc(doc(db, 'rooms', room.code), {
+        questions: selectedQuestions,
+        currentQuestion: 0,
+        state: 'playing',
+        players: room.players.map(p => ({ ...p, hasAnswered: false, score: 0 }))
+      });
+    }
+  };
+  
+  const submitFirebaseAnswer = async (answer: string) => {
+    if (!room || !roomId) return;
+    setSelectedAnswer(answer);
+    
+    // We get latest room data to prevent overriding other players
+    const roomRef = doc(db, 'rooms', roomId);
+    const roomSnap = await getDoc(roomRef);
+    if (!roomSnap.exists()) return;
+    
+    const r = roomSnap.data() as Room;
+    if (r.state !== 'playing') return;
+    
+    const playerIndex = r.players.findIndex(p => p.id === userId);
+    if (playerIndex === -1 || r.players[playerIndex].hasAnswered) return;
+    
+    const updatedPlayers = [...r.players];
+    const currentQ = r.questions[r.currentQuestion];
+    
+    updatedPlayers[playerIndex].hasAnswered = true;
+    if (answer === currentQ.a) {
+      updatedPlayers[playerIndex].score += Math.round(100 + (timeLeft * 10));
+    }
+    
+    let nextState: Room['state'] = r.state;
+    // Check if everyone answered
+    if (updatedPlayers.every(p => p.hasAnswered)) {
+      nextState = 'leaderboard';
+    }
+    
+    await updateDoc(roomRef, {
+      players: updatedPlayers,
+      state: nextState
+    });
+    
+    if (nextState === 'leaderboard' && isHost) {
+       // Host progresses after 5 seconds
+       setTimeout(async () => {
+          const freshSnap = await getDoc(roomRef);
+          if (freshSnap.exists()) {
+             const freshRoom = freshSnap.data() as Room;
+             if (freshRoom.state === 'leaderboard') {
+                if (freshRoom.currentQuestion < freshRoom.questions.length - 1) {
+                   await updateDoc(roomRef, {
+                      currentQuestion: freshRoom.currentQuestion + 1,
+                      state: 'playing',
+                      players: freshRoom.players.map(p => ({ ...p, hasAnswered: false }))
+                   });
+                } else {
+                   await updateDoc(roomRef, { state: 'finished' });
+                }
+             }
+          }
+       }, 5000);
     }
   };
 
-  const submitAnswer = (answer: string) => {
-    if (selectedAnswer || !socket || !room) return;
-    setSelectedAnswer(answer);
-    socket.emit('submit-answer', { code: room.code, answer, timeRemaining: timeLeft });
-  };
+  const submitAnswer = (answer: string) => submitFirebaseAnswer(answer);
 
   if (!room) {
     return (
@@ -189,7 +285,7 @@ export default function PartyGame({ onExit, t }: { onExit: () => void, t: any })
     );
   }
 
-  const myPlayerInfo = room.players.find(p => p.id === socket?.id);
+  const myPlayerInfo = room.players.find(p => p.id === userId);
 
   return (
     <div className="w-full h-full flex flex-col p-4 sm:p-8 relative z-10 overflow-y-auto">
@@ -222,7 +318,7 @@ export default function PartyGame({ onExit, t }: { onExit: () => void, t: any })
                 >
                   {p.id === room.hostId && <Trophy size={16} className="text-blitz-yellow" />}
                   {p.name}
-                  {p.id === socket?.id && <span className="text-xs text-white/40 ml-2">({t.you})</span>}
+                  {p.id === userId && <span className="text-xs text-white/40 ml-2">({t.you})</span>}
                 </motion.div>
               ))}
             </AnimatePresence>
@@ -351,7 +447,7 @@ export default function PartyGame({ onExit, t }: { onExit: () => void, t: any })
                     #{i+1}
                   </span>
                   <span className="text-xl font-bold text-white flex items-center gap-2">
-                    {p.name} {p.id === socket?.id && `(${t.you})`}
+                    {p.name} {p.id === userId && `(${t.you})`}
                     {i === 0 && <Trophy className="text-blitz-yellow" size={20} />}
                   </span>
                 </div>

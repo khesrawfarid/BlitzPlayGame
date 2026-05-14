@@ -1,0 +1,44 @@
+{
+  "entities": {
+    "Player": {
+      "title": "Player",
+      "description": "A player in a room",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "score": { "type": "number" },
+        "hasAnswered": { "type": "boolean" },
+        "color": { "type": "string", "enum": ["w", "b"] }
+      },
+      "required": ["id", "name"]
+    },
+    "Room": {
+      "title": "Room",
+      "description": "Multiplayer Game Room",
+      "type": "object",
+      "properties": {
+        "type": { "type": "string", "enum": ["quiz", "chess"] },
+        "hostId": { "type": "string" },
+        "state": { "type": "string", "enum": ["lobby", "playing", "leaderboard", "finished"] },
+        "currentQuestion": { "type": "number" },
+        "questions": { "type": "array" },
+        "chessFen": { "type": "string" },
+        "chessTurn": { "type": "string", "enum": ["w", "b"] },
+        "whiteTime": { "type": "number" },
+        "blackTime": { "type": "number" }
+      },
+      "required": ["type", "hostId", "state"]
+    }
+  },
+  "firestore": {
+    "/rooms/{roomId}": {
+      "schema": { "$ref": "Room" },
+      "description": "The main game room which holds the state"
+    },
+    "/rooms/{roomId}/players/{playerId}": {
+      "schema": { "$ref": "Player" },
+      "description": "Players in the game room"
+    }
+  }
+}

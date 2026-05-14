@@ -80,13 +80,13 @@ const ALL_IQ_QUESTIONS = [
 
 const INITIAL_GAMES: Game[] = [
   { id: 'party', title: 'Party Quiz (Online)', titleKey: 'partyQuizTitle', thumbnail: partyQuizThumb, genre: 'party', difficulty: 'easy', isAI: false, isMultiplayer: true },
-  { id: 'chess', title: 'Schach', titleKey: 'chessTitle', thumbnail: 'https://images.unsplash.com/photo-1529699211952-734e80c4d42b?auto=format&fit=crop&q=80&w=400&h=250', genre: 'puzzle', difficulty: 'hard', isAI: false, isMultiplayer: false },
+  { id: 'chess', title: 'Schach', titleKey: 'chessTitle', thumbnail: 'https://images.unsplash.com/photo-1529699211952-734e80c4d42b?auto=format&fit=crop&q=80&w=400&h=250', genre: 'puzzle', difficulty: 'hard', isAI: false, isMultiplayer: true },
   { id: '1', title: 'Blitz Clicker', titleKey: 'blitzClickerTitle', thumbnail: 'https://images.unsplash.com/photo-1550745165-9bc0b252726f?auto=format&fit=crop&q=80&w=400&h=250', genre: 'speed', difficulty: 'easy', isAI: false, isMultiplayer: false },
-  { id: '2', title: 'Neon Memory', titleKey: 'neonMemoryTitle', thumbnail: neonMemoryThumb, genre: 'puzzle', difficulty: 'medium', isAI: true, isMultiplayer: false },
+  { id: '2', title: 'Neon Memory', titleKey: 'neonMemoryTitle', thumbnail: neonMemoryThumb, genre: 'puzzle', difficulty: 'medium', isAI: false, isMultiplayer: false },
   { id: '7', title: 'Math Blitz', titleKey: 'mathBlitzTitle', thumbnail: 'https://images.unsplash.com/photo-1635070041078-e363dbe005cb?auto=format&fit=crop&q=80&w=400&h=250', genre: 'puzzle', difficulty: 'medium', isAI: false, isMultiplayer: false },
-  { id: '8', title: 'Reaction Master', titleKey: 'reactionMasterTitle', thumbnail: 'https://images.unsplash.com/photo-1552820728-8b83bb6b773f?auto=format&fit=crop&q=80&w=400&h=250', genre: 'speed', difficulty: 'hard', isAI: false, isMultiplayer: true },
+  { id: '8', title: 'Reaction Master', titleKey: 'reactionMasterTitle', thumbnail: 'https://images.unsplash.com/photo-1552820728-8b83bb6b773f?auto=format&fit=crop&q=80&w=400&h=250', genre: 'speed', difficulty: 'hard', isAI: false, isMultiplayer: false },
   { id: '9', title: 'Tower Defense', titleKey: 'towerDefenseTitle', thumbnail: towerDefenseThumb, genre: 'battle', difficulty: 'medium', isAI: false, isMultiplayer: false },
-  { id: 'iq', title: 'IQ Test', titleKey: 'iqTestTitle', thumbnail: 'https://images.unsplash.com/photo-1620712943543-bcc4688e7485?auto=format&fit=crop&q=80&w=400&h=250', genre: 'puzzle', difficulty: 'hard', isAI: true, isMultiplayer: false },
+  { id: 'iq', title: 'IQ Test', titleKey: 'iqTestTitle', thumbnail: 'https://images.unsplash.com/photo-1620712943543-bcc4688e7485?auto=format&fit=crop&q=80&w=400&h=250', genre: 'puzzle', difficulty: 'hard', isAI: false, isMultiplayer: false },
 ];
 
 // --- Components ---
@@ -238,9 +238,7 @@ export default function App() {
     setGenerationError(null);
     
     try {
-      const url = window.location.hostname === 'localhost' || window.location.hostname.includes('.run.app')
-        ? '/api/generate-game' 
-        : 'https://blitzplaygame.onrender.com/api/generate-game';
+      const url = '/api/generate-game';
         
       const resp = await fetch(url, {
         method: "POST",
