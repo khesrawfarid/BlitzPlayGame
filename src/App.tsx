@@ -238,7 +238,7 @@ export default function App() {
     setGenerationError(null);
     
     try {
-      const url = window.location.hostname === 'localhost' 
+      const url = window.location.hostname === 'localhost' || window.location.hostname.includes('.run.app')
         ? '/api/generate-game' 
         : 'https://blitzplaygame.onrender.com/api/generate-game';
         

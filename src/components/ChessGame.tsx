@@ -130,7 +130,7 @@ export default function ChessGame({ onBack, t }: ChessGameProps) {
 
   // Setup Socket
   useEffect(() => {
-    const url = window.location.hostname === 'localhost' 
+    const url = window.location.hostname === 'localhost' || window.location.hostname.includes('.run.app')
       ? window.location.origin 
       : 'https://blitzplaygame.onrender.com';
       
@@ -649,8 +649,8 @@ export default function ChessGame({ onBack, t }: ChessGameProps) {
                                <button 
                                  onClick={() => {
                                    if (!playerName) return alert('Bitte Namen eingeben!');
-                                   socket.emit('create-chess-room', (res: any) => {
-                                     setRoom({ code: res.code, players: [{ name: playerName, color: 'w' }] });
+                                   socket.emit('create-chess-room', { name: playerName }, (res: any) => {
+                                     setRoom(res.room);
                                      setPlayerColor('w');
                                    });
                                  }}

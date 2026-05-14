@@ -34,7 +34,7 @@ export default function PartyGame({ onExit, t }: { onExit: () => void, t: any })
 
   useEffect(() => {
     // Connect to the Render backend provided by the user, fallback to origin for local dev
-    const url = window.location.hostname === 'localhost' 
+    const url = window.location.hostname === 'localhost' || window.location.hostname.includes('.run.app')
       ? window.location.origin 
       : 'https://blitzplaygame.onrender.com';
       

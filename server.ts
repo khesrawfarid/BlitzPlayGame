@@ -265,19 +265,27 @@ async function startServer() {
       }
     });
 
-    socket.on("create-chess-room", (callback) => {
+    socket.on("create-chess-room", (data, callback) => {
+      let name = "Host";
+      let cb = callback;
+      if (typeof data === 'function') {
+        cb = data;
+      } else {
+        name = data.name || "Host";
+      }
+
       const code = Math.random().toString(36).substring(2, 6).toUpperCase();
       socket.join(code);
       const room: Room = {
         type: 'chess',
         code,
         hostId: socket.id,
-        players: [],
+        players: [{ id: socket.id, name, score: 0, hasAnswered: false, color: 'w' } as any],
         state: 'lobby',
         chessState: null
       };
       rooms.set(code, room);
-      callback({ code });
+      if (cb) cb({ code, room });
     });
 
     socket.on("join-chess-room", ({ code, name }, callback) => {
